@@ -21,19 +21,19 @@ def main():
         return
 
     # 2. Get User Query
-    user_query = input("\nEnter your research topic/query: ")
+    user_query = input("\nEnter the topic you want to find datasets for (e.g. 'Bitcoin Transaction 2023'): ")
     if not user_query:
         print("Query cannot be empty.")
         return
 
     # 3. Analyze Query
-    print("\nAnalyzing query...")
-    analysis_prompt = f"Analyze the following research topic and identify key aspects, synonyms, and related technical terms to help find comprehensive datasets/information:\nTopic: {user_query}\nKeep it concise."
+    print("\nAnalyzing topic for potential dataset sources...")
+    analysis_prompt = f"Analyze the following topic to find DATASETS. Identify key file formats (CSV/JSON), repository names, and technical terms:\nTopic: {user_query}\nKeep it concise."
     analysis = llm.generate_text(analysis_prompt)
     print(f"Analysis: {analysis}")
 
     # 4. Generate Search Queries
-    print(f"\nGenerating {config.MAX_SEARCH_QUERIES} search queries...")
+    print(f"\nGenerating {config.MAX_SEARCH_QUERIES} dataset search queries...")
     # We might need to batched generation if 200 is too hard for one pass, but let's try one pass first or split into 4 batches of 50.
     
     generated_queries = []
@@ -42,8 +42,8 @@ def main():
     
     for i in range(batches):
         prompt = f"""
-You are an expert researcher. Based on the topic "{user_query}" and the analysis "{analysis}", generate a list of {queries_per_batch} unique, specific Google search queries to find datasets, papers, or articles.
-Focus on finding downloadable data, CSVs, APIs, and comprehensive reports.
+You are an expert Data Engineer. Based on the topic "{user_query}", generate a list of {queries_per_batch} Google search queries to find DOWNLOADABLE DATASETS.
+Use advanced operators like: filetype:csv, filetype:json, filetype:parquet, "dataset", "corpus", "dump", site:kaggle.com, site:huggingface.co
 Return ONLY valid JSON format:
 {{
   "queries": [

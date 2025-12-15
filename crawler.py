@@ -42,14 +42,12 @@ class FilterAgent:
             
         snippet = article_text[:1000] # First 1000 chars is usually enough for relevance check
         prompt = f"""
-Query: "{query}"
-
-Article Start:
-"{snippet}..."
-
-Task: Is this article relevant and does it likely contain data/information useful for the query?
-Answer only with JSON: {{"relevant": true/false, "reason": "short explanation"}}
-"""
+        Snippet: "{snippet}..."
+        
+        Task: Does this page likely contain a DOWNLOADABLE DATASET, RAW DATA TABLES, or API DOCUMENTATION for the query?
+        Ignore general news or opinion articles unless they contain data tables.
+        Answer only with JSON: {{"relevant": true/false, "reason": "found csv link / found data table / etc"}}
+        """
         response = self.llm.generate_json(prompt, max_tokens=100)
         if response and isinstance(response, dict):
             return response.get("relevant", False)

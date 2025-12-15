@@ -50,22 +50,24 @@ class LLMEngine:
 
     def extract_info(self, text, query):
         """
-        Extracts structured information from the text based on the query.
+        Extracts structured dataset metadata from the text.
         """
         prompt = f"""
-You are a data extractor. 
-Context: User is looking for "{query}".
+You are a Dataset Scraper Agent. 
+Context: User is looking for datasets about "{query}".
 Content: "{text[:3000]}..."
 
-Task: Extract the following information in JSON format:
-1. "summary": A brief summary of the content.
-2. "dataset_links": List of any direct download links or API endpoints found.
-3. "key_points": List of key facts relevant to the query.
-4. "relevance_score": A score from 0-10.
+Task: Extract dataset details in JSON format.
+1. "dataset_name": Title of the dataset or page.
+2. "description": Brief description of what data is contained (rows, columns, subject).
+3. "formats": List of available formats (e.g., CSV, JSON, API, ZIP, HTML_TABLE).
+4. "download_links": List of direct download URLs or Access APIs.
+5. "license": Any license information mentioned (e.g., MIT, CC-BY, Unknown).
+6. "relevance_score": 0-10 (10 = Direct CSV/JSON link found, 0 = Irrelevant blog).
 
 Return ONLY the JSON.
 """
-        return self.generate_json(prompt, max_tokens=500)
+        return self.generate_json(prompt, max_tokens=600)
 
 
     def _extract_json(self, text):

@@ -28,9 +28,11 @@ class DataManager:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(f"URL: {article_data['url']}\n")
             f.write(f"Query: {query}\n")
-            f.write(f"Relevance: {article_data.get('relevance_score', 'N/A')}\n")
-            f.write(f"Summary: {article_data.get('summary', 'N/A')}\n")
-            f.write(f"Dataset Links: {article_data.get('dataset_links', '[]')}\n")
+            f.write(f"Dataset Name: {article_data.get('dataset_name', 'N/A')}\n")
+            f.write(f"Formats: {article_data.get('formats', '[]')}\n")
+            f.write(f"Download Links: {article_data.get('download_links', '[]')}\n")
+            f.write(f"License: {article_data.get('license', 'Unknown')}\n")
+            f.write(f"Description: {article_data.get('description', 'N/A')}\n")
             f.write("-" * 80 + "\n")
             f.write(article_data['text'])
             
@@ -38,11 +40,12 @@ class DataManager:
         self.data_buffer.append({
             "query": query,
             "url": article_data['url'],
+            "dataset_name": article_data.get('dataset_name', "N/A"),
+            "formats": str(article_data.get('formats', [])),
+            "download_links": str(article_data.get('download_links', [])),
+            "license": article_data.get('license', "Unknown"),
             "relevance": article_data.get('relevance_score', 0),
-            "summary": article_data.get('summary', ""),
-            "dataset_links": str(article_data.get('dataset_links', [])),
-            "content_path": file_path,
-            "snippet": article_data['text'][:200]
+            "local_path": file_path
         })
         
         # Auto-flush to CSV every 10 items
