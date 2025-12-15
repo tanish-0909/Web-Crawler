@@ -1,51 +1,99 @@
-from huggingface_hub import hf_hub_download
-from llama_cpp import Llama
-import json
-import re
+import argparse
+import config
+from llm_engine import LLMEngine
+from search_engine import SearchEngine
+from crawler import LinkAnalyzer
+from data_manager import DataManager
+import time
+import sys
 
-# Download model
-model_path = hf_hub_download(
-    repo_id="TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
-    filename="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-)
-
-# Initialize model
-model = Llama(
-    model_path=model_path,
-    n_ctx=4096,
-    n_gpu_layers=33,  # Offload all layers to GPU
-    n_threads=8
-)
-
-topic = "the Black Scholes Model"
-prompt = f"""Generate exactly 20 search queries about: {topic} for finding relevant datasets.
-Format as VALID JSON: {{"queries": ["query1", "query2", ...]}}
-Include keywords like 'kaggle', 'papers with code', and 'hugging face'."""
-
-# Generate response
-output = model(
-    prompt,
-    max_tokens=400,
-    temperature=0.3,  # Lower temp for more deterministic output
-    stop=["}"],       # Stop at closing brace to complete JSON
-)
-
-# Extract and clean response
-response_text = output['choices'][0]['text']
-
-# 1. Find JSON substring using regex
-json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-if json_match:
-    json_str = json_match.group(0)
+def main():
+    print("=== AI Research Agent ===")
+    
+    # 1. Initialize Components
     try:
-        # 2. Parse JSON
-        queries = json.loads(json_str)
-        print("Successfully parsed JSON:")
-        for i, q in enumerate(queries['queries'], 1):
-            print(f"{i}. {q}")
-    except json.JSONDecodeError:
-        print("JSON parsing failed. Raw response:")
-        print(response_text)
-else:
-    print("No JSON found in response. Full output:")
-    print(response_text)
+        llm = LLMEngine()
+        searcher = SearchEngine(pause=config.DELAY_BETWEEN_SEARCHES)
+        analyzer = LinkAnalyzer(llm)
+        data_manager = DataManager()
+    except Exception as e:
+        print(f"Failed to initialize: {e}")
+        return
+
+    # 2. Get User Query
+    user_query = input("\nEnter your research topic/query: ")
+    if not user_query:
+        print("Query cannot be empty.")
+        return
+
+    # 3. Analyze Query
+    print("\nAnalyzing query...")
+    analysis_prompt = f"Analyze the following research topic and identify key aspects, synonyms, and related technical terms to help find comprehensive datasets/information:\nTopic: {user_query}\nKeep it concise."
+    analysis = llm.generate_text(analysis_prompt)
+    print(f"Analysis: {analysis}")
+
+    # 4. Generate Search Queries
+    print(f"\nGenerating {config.MAX_SEARCH_QUERIES} search queries...")
+    # We might need to batched generation if 200 is too hard for one pass, but let's try one pass first or split into 4 batches of 50.
+    
+    generated_queries = []
+    batches = 4
+    queries_per_batch = config.MAX_SEARCH_QUERIES // batches
+    
+    for i in range(batches):
+        prompt = f"""
+You are an expert researcher. Based on the topic "{user_query}" and the analysis "{analysis}", generate a list of {queries_per_batch} unique, specific Google search queries to find datasets, papers, or articles.
+Focus on finding downloadable data, CSVs, APIs, and comprehensive reports.
+Return ONLY valid JSON format:
+{{
+  "queries": [
+    "query 1",
+    ...
+    "query {queries_per_batch}"
+  ]
+}}
+"""
+        print(f"Generating batch {i+1}/{batches}...")
+        result = llm.generate_json(prompt, max_tokens=2048)
+        if result and "queries" in result:
+            generated_queries.extend(result["queries"])
+        else:
+            print("Failed to generate queries for this batch.")
+
+    generated_queries = list(set(generated_queries)) # Unique
+    print(f"Total unique queries generated: {len(generated_queries)}")
+    
+    if not generated_queries:
+        print("No queries generated. Exiting.")
+        return
+
+    # 5. Execution Loop
+    total_processed = 0
+    
+    for i, query in enumerate(generated_queries):
+        print(f"\n[{i+1}/{len(generated_queries)}] Processing Query: {query}")
+        
+        # Search
+        links = searcher.perform_search(query, num_results=config.MAX_RESULTS_PER_QUERY)
+        print(f"Found {len(links)} links.")
+        
+        # Analyze & Filter
+        useful_data = analyzer.process_links(query, links)
+        print(f"Found {len(useful_data)} useful articles.")
+        
+        # Save
+        for article in useful_data:
+            data_manager.save_article(query, article)
+            
+        total_processed += len(links)
+        print("-" * 50)
+        
+    data_manager.close()
+    print(f"\n=== Job Complete. Processed {total_processed} links. Data saved to {data_manager.session_dir} ===")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nAborted by user.")
+        sys.exit(0)
