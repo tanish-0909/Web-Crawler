@@ -1,8 +1,8 @@
-# Deep Dataset Scraper 📀⛏️
+# Deep Dataset Scraper 
 
 An intelligent, autonomous agent designed to build massive Machine Learning datasets by scraping the web. It uses a local LLM to generate targeted queries, filter for valid data sources, and extract direct download links and metadata.
 
-## 🎯 Purpose
+## Purpose
 Unlike generic web scrapers, this tool is optimized for **Data Engineering** tasks. It actively ignores blog posts and opinion pieces, hunting specifically for:
 - CSV/JSON/Parquet files
 - Kaggle & HuggingFace datasets
@@ -10,7 +10,7 @@ Unlike generic web scrapers, this tool is optimized for **Data Engineering** tas
 - API Documentation
 - Raw HTML tables
 
-## 🚀 Key Features
+## Key Features
 - **Dataset-Focused Querying**: Auto-generates queries using advanced operators (`filetype:csv`, `site:kaggle.com`, `intitle:index of`).
 - **Smart Filtering**: The local LLM (Mistral-7B) reads page content to verify if it actually contains a dataset or valid access method.
 - **Metadata Extraction**: Extracts:
@@ -22,7 +22,7 @@ Unlike generic web scrapers, this tool is optimized for **Data Engineering** tas
   - Saves a master `dataset.csv` with all metadata.
   - Archives raw page content for further parsing.
 
-## 🛠️ Installation
+## Installation
 
 1. **Clone & Install**:
    ```bash
@@ -38,7 +38,7 @@ Unlike generic web scrapers, this tool is optimized for **Data Engineering** tas
    pip install llama-cpp-python --upgrade --force-reinstall --no-cache-dir
    ```
 
-## 💻 Usage
+## Usage
 
 1. Run the scraper:
    ```bash
@@ -52,7 +52,7 @@ Unlike generic web scrapers, this tool is optimized for **Data Engineering** tas
    - Crawl thousands of results.
    - Filter and catalog every valid dataset found.
 
-## 📂 Output Structure
+## Output Structure
 
 Data is stored in `data/{session_id}/`:
 
@@ -61,13 +61,10 @@ Data is stored in `data/{session_id}/`:
 | `dataset.csv` | Master catalog containing **Download Links**, **License**, **Formats**, etc. |
 | `query_folder/*.txt` | Raw text of the verified pages, serving as a text corpus if needed. |
 
-## ⚙️ Configuration (`config.py`)
+## Configuration (`config.py`)
 - `MAX_SEARCH_QUERIES`: Default 200. Increase for deeper scraping.
 - `MAX_RESULTS_PER_QUERY`: Default 100.
 - `N_GPU_LAYERS`: Set to `-1` for max performance on RTX 4050.
 
-## 🧠 Model Info
+## Model Info
 Uses `Mistral-7B-Instruct-v0.2-GGUF` (Quantized) for a balance of reasoning capability and memory efficiency (fits in 6GB VRAM).
-
-## 📜 License
-MIT
