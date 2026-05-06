@@ -1,57 +1,79 @@
-import trafilatura
-import requests
-from bs4 import BeautifulSoup
 import concurrent.futures
+
+import trafilatura
+
 import config
+from url_grounding import harvest_urls
+
+
+def _attach_verified_links(raw_llm: dict | None, candidates: list[str]) -> dict:
+    """Turn selected_indices (+ stray URLs we trust) into verified_download_links."""
+    row = dict(raw_llm) if raw_llm else {}
+    verified: list[str] = []
+    picks = row.get("selected_indices")
+    if isinstance(picks, list):
+        for i in picks:
+            if isinstance(i, int) and 0 <= i < len(candidates):
+                verified.append(candidates[i])
+
+    ok = set(candidates)
+    for key in ("download_links", "urls"):
+        leftover = row.pop(key, None)
+        if isinstance(leftover, list):
+            for item in leftover:
+                if isinstance(item, str) and item in ok and item not in verified:
+                    verified.append(item)
+
+    row["verified_download_links"] = verified
+    row["download_links"] = verified
+    row["candidates_count"] = len(candidates)
+    row.pop("selected_indices", None)
+    return row
+
 
 class ContentFetcher:
-    def __init__(self):
-        pass
-
     def fetch_url(self, url):
-        """
-        Downloads and parses the main content of the URL.
-        Returns a dictionary with raw_html, text, and metadata.
-        """
+        """Grab HTML via trafilatura; body text can be empty but we still keep HTML for link parsing."""
         try:
             downloaded = trafilatura.fetch_url(url)
-            if downloaded:
-                text = trafilatura.extract(downloaded, include_comments=False, include_tables=True)
-                if text:
-                    return {
-                        "url": url,
-                        "text": text,
-                        "raw_html": downloaded
-                    }
-        except Exception as e:
-            # print(f"Error processing {url}: {e}")
-            pass
-        return None
+            if not downloaded:
+                return None
+            text = trafilatura.extract(
+                downloaded, include_comments=False, include_tables=True
+            )
+            return {
+                "url": url,
+                "text": text or "",
+                "raw_html": downloaded,
+            }
+        except Exception:
+            return None
+
 
 class FilterAgent:
     def __init__(self, llm_engine):
         self.llm = llm_engine
 
     def is_relevant(self, query, article_text):
-        """
-        Uses LLM to determine if the article is relevant to the query.
-        Uses a truncated version of the text to save tokens.
-        """
+        """Quick yes/no pass before we burn tokens on full extraction."""
         if not article_text:
             return False
-            
-        snippet = article_text[:1000] # First 1000 chars is usually enough for relevance check
-        prompt = f"""
-        Snippet: "{snippet}..."
-        
-        Task: Does this page likely contain a DOWNLOADABLE DATASET, RAW DATA TABLES, or API DOCUMENTATION for the query?
-        Ignore general news or opinion articles unless they contain data tables.
-        Answer only with JSON: {{"relevant": true/false, "reason": "found csv link / found data table / etc"}}
-        """
-        response = self.llm.generate_json(prompt, max_tokens=100)
+
+        snippet = article_text[:1200]
+        prompt = f"""Snippet from a web page:
+\"\"\"{snippet}\"\"\"
+
+Task: Does this page likely contain a DOWNLOADABLE DATASET, RAW DATA TABLES, or API / bulk data access related to: "{query}"?
+Ignore pure opinion/blog unless it embeds data tables or download links.
+
+Answer ONLY valid JSON (no other text):
+{{"relevant": true or false, "reason": "short phrase"}}"""
+
+        response = self.llm.generate_json(prompt, max_tokens=120)
         if response and isinstance(response, dict):
-            return response.get("relevant", False)
+            return bool(response.get("relevant", False))
         return False
+
 
 class LinkAnalyzer:
     def __init__(self, llm_engine):
@@ -59,33 +81,44 @@ class LinkAnalyzer:
         self.llm = llm_engine
         self.filter = FilterAgent(llm_engine)
 
-    def process_links(self, query, links):
-        """
-        Process a list of links: fetch, filter, and return useful data.
-        """
-        useful_data = []
-        # We can parallelize fetching, but LLM filtering is the bottleneck on GPU.
-        # Fetching can be threaded.
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_url = {executor.submit(self.fetcher.fetch_url, url): url for url in links}
-            
-            for future in concurrent.futures.as_completed(future_to_url):
-                url = future_to_url[future]
+    def process_links(self, query, links, run=None):
+        """Fetch in parallel, relevance filter, then structured pull with grounded URLs."""
+        kept = []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            pending = {pool.submit(self.fetcher.fetch_url, url): url for url in links}
+
+            for future in concurrent.futures.as_completed(pending):
+                url = pending[future]
                 try:
-                    data = future.result()
-                    if data:
-                        print(f"Analyzing content from: {url}")
-                        if self.filter.is_relevant(query, data['text']):
-                            print(f"Found relevant data: {url}")
-                            # Extra extraction step
-                            extracted_info = self.llm.extract_info(data['text'], query)
-                            if extracted_info:
-                                data.update(extracted_info)
-                            useful_data.append(data)
-                        else:
-                            pass # print(f"Not relevant: {url}")
+                    payload = future.result()
+                    if not payload:
+                        if run:
+                            run.fetch_failures += 1
+                        continue
+
+                    if run:
+                        run.pages_fetched += 1
+
+                    print(f"Analyzing content from: {url}")
+                    if self.filter.is_relevant(query, payload["text"]):
+                        if run:
+                            run.pages_relevant += 1
+                        print(f"Found relevant data: {url}")
+
+                        candidates = harvest_urls(
+                            payload["url"],
+                            payload.get("raw_html"),
+                            payload.get("text"),
+                            config.MAX_CANDIDATE_URLS,
+                        )
+
+                        extracted = self.llm.extract_info(
+                            payload["text"], query, candidates
+                        )
+                        payload.update(_attach_verified_links(extracted, candidates))
+                        kept.append(payload)
                 except Exception as e:
                     print(f"Error analyzing {url}: {e}")
-        
-        return useful_data
+
+        return kept

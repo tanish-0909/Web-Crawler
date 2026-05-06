@@ -1,70 +1,59 @@
-# Deep Dataset Scraper 
+# Deep Dataset Scraper
 
-An intelligent, autonomous agent designed to build massive Machine Learning datasets by scraping the web. It uses a local LLM to generate targeted queries, filter for valid data sources, and extract direct download links and metadata.
+An autonomous agent that searches the web for **downloadable datasets** on a topic you choose. It uses a **local LLM via Ollama** to draft search queries, judge whether a page is data‑related, and summarize metadata. **Download targets are grounded**: only URLs actually present on the fetched page can appear as verified links (the model picks indices into that list).
 
-## Purpose
-Unlike generic web scrapers, this tool is optimized for **Data Engineering** tasks. It actively ignores blog posts and opinion pieces, hunting specifically for:
-- CSV/JSON/Parquet files
-- Kaggle & HuggingFace datasets
-- SQL Dumps
-- API Documentation
-- Raw HTML tables
+## Prerequisites
 
-## Key Features
-- **Dataset-Focused Querying**: Auto-generates queries using advanced operators (`filetype:csv`, `site:kaggle.com`, `intitle:index of`).
-- **Smart Filtering**: The local LLM (Mistral-7B) reads page content to verify if it actually contains a dataset or valid access method.
-- **Metadata Extraction**: Extracts:
-  - Dataset Name & Description
-  - File Formats
-  - Direct Download Links
-  - Licensing Info (e.g., CC-BY, MIT)
-- **Structured Storage**:
-  - Saves a master `dataset.csv` with all metadata.
-  - Archives raw page content for further parsing.
+1. **Python 3.10+**
+2. **[Ollama](https://ollama.com/)** installed and running (`ollama serve` is usually automatic after install).
+3. At least one chat model pulled. The default in [`config.py`](config.py) is **`llama3.2:3b`** — a strong choice for structured JSON on **~6 GB VRAM / 16 GB RAM** with comfortable headroom.
 
-## Installation
+```powershell
+ollama pull llama3.2:3b
+```
 
-1. **Clone & Install**:
-   ```bash
-   git clone https://github.com/yourusername/Deep-Dataset-Scraper.git
-   cd Deep-Dataset-Scraper
-   pip install -r requirements.txt
-   ```
+Override with environment variables if needed:
 
-2. **GPU Setup** (Critical for speed):
-   Ensure `llama-cpp-python` is using your NVIDIA GPU.
-   ```powershell
-   $env:CMAKE_ARGS="-DLLAMA_CUBLAS=on"
-   pip install llama-cpp-python --upgrade --force-reinstall --no-cache-dir
-   ```
+```powershell
+$env:OLLAMA_MODEL = "mistral"
+$env:OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+```
+
+## Setup (Windows PowerShell)
+
+```powershell
+cd D:\Webcrawler
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
 ## Usage
 
-1. Run the scraper:
-   ```bash
-   python main.py
-   ```
-2. Enter your target dataset topic (e.g., *"Historical Weather Data Europe"* or *"Chest X-Ray Images DICOM"*).
+```powershell
+python main.py
+```
 
-3. The agent will:
-   - Analyze technical terms around the topic.
-   - Generate ~200 specific search queries.
-   - Crawl thousands of results.
-   - Filter and catalog every valid dataset found.
+Enter a topic (e.g. *Historical weather CSV Europe*). The agent will:
 
-## Output Structure
+1. Analyze the topic.
+2. Generate many targeted Google queries (batched JSON).
+3. Fetch pages, filter with the LLM, extract grounded metadata.
+4. Save rows under `data/{session_id}/` and write **`research_report.md`** + **`research_summary.json`**.
 
-Data is stored in `data/{session_id}/`:
+## Output
 
-| File | Description |
-|------|-------------|
-| `dataset.csv` | Master catalog containing **Download Links**, **License**, **Formats**, etc. |
-| `query_folder/*.txt` | Raw text of the verified pages, serving as a text corpus if needed. |
+| Artifact | Description |
+|----------|-------------|
+| `dataset.csv` | Catalog with verified links, candidates count, timestamps |
+| `research_report.md` | Human-readable counts, domains, sources |
+| `research_summary.json` | Same stats + full source list + config snapshot |
+| Per-query folders | `.txt` archives of scraped text |
 
-## Configuration (`config.py`)
-- `MAX_SEARCH_QUERIES`: Default 200. Increase for deeper scraping.
-- `MAX_RESULTS_PER_QUERY`: Default 100.
-- `N_GPU_LAYERS`: Set to `-1` for max performance on RTX 4050.
+## Configuration
 
-## Model Info
-Uses `Mistral-7B-Instruct-v0.2-GGUF` (Quantized) for a balance of reasoning capability and memory efficiency (fits in 6GB VRAM).
+See [`config.py`](config.py): search volume, delays, `MAX_CANDIDATE_URLS`, Ollama URL/model, etc.
+
+## Limits
+
+Google HTML results and site blocking are outside this repo’s control. Grounding prevents **invented download URLs**; it does not guarantee every topic yields thousands of unique files without APIs or authenticated sources.
