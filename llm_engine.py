@@ -57,6 +57,7 @@ class LLMEngine:
         max_tokens: int,
         temperature: float,
         stop: Optional[List[str]] = None,
+        json_mode: bool = False,
     ) -> str:
         payload: dict[str, Any] = {
             "model": self.model,
@@ -67,6 +68,9 @@ class LLMEngine:
                 "num_predict": max_tokens,
             },
         }
+        if json_mode:
+            # Ollama forces JSON output — stops chatty prose breaking parsers
+            payload["format"] = "json"
         if stop:
             payload["options"]["stop"] = stop
 
@@ -93,6 +97,7 @@ class LLMEngine:
             max_tokens=max_tokens,
             temperature=0.3,
             stop=["```\n\n", "User:"],
+            json_mode=True,
         )
         return self._extract_json(text)
 
@@ -135,6 +140,7 @@ Do not include download_links or any URL strings in the JSON."""
             max_tokens=700,
             temperature=0.25,
             stop=["```\n\n", "User:"],
+            json_mode=True,
         )
         return self._extract_json(raw)
 
